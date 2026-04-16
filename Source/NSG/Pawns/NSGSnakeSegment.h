@@ -15,4 +15,16 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	class UStaticMeshComponent* SegmentMesh;
+
+public:
+	// Body mesh
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visuals")
+	class UStaticMesh* BodyMesh;
+
+	// Tail mesh
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visuals")
+	class UStaticMesh* TailMesh;
+
+	// Function to swap the active mesh
+	void UpdateVisuals(bool bIsLastSegment);
 };

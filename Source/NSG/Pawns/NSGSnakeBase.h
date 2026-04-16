@@ -72,6 +72,8 @@ public:
 	// Snake growth function
 	void AddTailSegment();
 
+	void RefreshTailVisuals();
+
 	// Core mechanic!! Swap heads and tails, good for co-op too!
 	UFUNCTION(BlueprintCallable, Category = "Mechanics")
 	void SwapHeadAndTail();
@@ -93,4 +95,3 @@ private:
 	// Helper teleport function
 	void PerformSwapTeleport();
 };
-

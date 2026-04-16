@@ -4,6 +4,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "NSGSnakeSegment.h"
 
 ANSGSnakeBase::ANSGSnakeBase()
 {
@@ -230,7 +231,10 @@ void ANSGSnakeBase::SwapHeadAndTail()
 void ANSGSnakeBase::PerformSwapTeleport()
 {
 	FVector OldHeadLocation = GetActorLocation();
-	FRotator InvertedRotation = GetActorRotation() + FRotator(0.0f, 180.0f, 0.0f);
+
+	// Take last segment and make snake head face opposite of it
+	FRotator TailRotation = TailSegments.Last()->GetActorRotation();
+	FRotator InvertedRotation = TailRotation + FRotator(0.0f, 180.0f, 0.0f);
 
 	TArray<FVector> OldTailLocations;
 	for (int32 i = 0; i < TailSegments.Num(); i++)
@@ -247,4 +251,18 @@ void ANSGSnakeBase::PerformSwapTeleport()
 	}
 
 	Algo::Reverse(TailSegments);
+}
+
+void ANSGSnakeBase::RefreshTailVisuals()
+{
+	for (int32 i = 0; i < TailSegments.Num(); i++)
+	{
+		// Try to cast the generic Actor into our specific Segment class
+		if (ANSGSnakeSegment* Segment = Cast<ANSGSnakeSegment>(TailSegments[i]))
+		{
+			// It is the last piece ONLY if its index is Size - 1
+			bool bIsLast = (i == TailSegments.Num() - 1);
+			Segment->UpdateVisuals(bIsLast);
+		}
+	}
 }
