@@ -40,10 +40,18 @@ protected:
 	// The countdown value (gets set to MaxSwapTime)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mechanics")
 	float CurrentSwapTimer;
+	float InvincibilityTimer;
 
 	// Snake movement speed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float MoveSpeed;
+
+	// Coop toggler
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Rules")
+	bool bIsCoopMode = false;
+
+	// Track who is driving the snake
+	bool bIsPlayer1Driving = true;
 
 	// Snake max turn speed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
@@ -55,6 +63,9 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	UFUNCTION()
+	void OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 public:
 	// Tail segment class

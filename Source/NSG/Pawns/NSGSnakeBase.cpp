@@ -4,6 +4,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "NSGSnakeSegment.h"
 
 ANSGSnakeBase::ANSGSnakeBase()
@@ -14,6 +15,10 @@ ANSGSnakeBase::ANSGSnakeBase()
 	// Create mesh component of the snake head
 	HeadMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadMesh"));
 	RootComponent = HeadMesh;
+
+	HeadMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	HeadMesh->SetGenerateOverlapEvents(true);
+	HeadMesh->OnComponentBeginOverlap.AddDynamic(this, &ANSGSnakeBase::OnHeadOverlap);
 
 	// Floating 3d text
 	TimerText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("TimerText"));
@@ -74,6 +79,11 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 	if (bIsSwapping)
 	{
 		CurrentSwapTime += DeltaTime;
+		
+		if (InvincibilityTimer > 0.0f)
+		{
+			InvincibilityTimer -= DeltaTime;
+		}
 
 		if (CurrentSwapTime <= SwapTransitionTime)
 		{
@@ -103,10 +113,15 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 		}
 		else
 		{
-			// Finish swap
 			bIsSwapping = false;
 			HeadMesh->SetWorldScale3D(FVector(1.0f));
 			if (TailSegments.Num() > 0) TailSegments[0]->SetActorScale3D(FVector(1.0f));
+
+			// Give the player 0.5 seconds of invincibility after the swap finishes
+			InvincibilityTimer = 0.5f;
+
+			// Tail visual refresh
+			RefreshTailVisuals();
 		}
 
 		// Useful little return
@@ -129,24 +144,37 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 		}
 	}
 
+	// Funny controller link
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		FHitResult HitResult;
-
-		// Ray casting from mouse!
-		if (PC->GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
+		// Singleplayer or Co-op? If single player or player 1 in co-op:
+		if (!bIsCoopMode || bIsPlayer1Driving)
 		{
-			FVector TargetLocation = HitResult.ImpactPoint;
+			FHitResult HitResult;
+			if (PC->GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
+			{
+				FVector TargetLocation = HitResult.ImpactPoint;
+				TargetLocation.Z = GetActorLocation().Z;
+				FRotator TargetRotation = (TargetLocation - GetActorLocation()).Rotation();
+				FRotator ClampedRotation = FMath::RInterpConstantTo(GetActorRotation(), TargetRotation, DeltaTime, MaxTurnSpeed);
+				SetActorRotation(ClampedRotation);
+			}
+		}
+		// If it is player 2s turn in co-op:
+		else
+		{
+			float TurnInput = 0.0f;
 
-			// Lock so the snake only moves along its proper Z... Y axis... 
-			TargetLocation.Z = GetActorLocation().Z;
+			// Read the arrow keys directly
+			if (PC->IsInputKeyDown(EKeys::Right)) TurnInput += 1.0f;
+			if (PC->IsInputKeyDown(EKeys::Left)) TurnInput -= 1.0f;
 
-			// Calculate the rotation needed to look at the mouse
-			FRotator TargetRotation = (TargetLocation - GetActorLocation()).Rotation();
-
-			// Smoothly turn the snake at a maximum speed
-			FRotator ClampedRotation = FMath::RInterpConstantTo(GetActorRotation(), TargetRotation, DeltaTime, MaxTurnSpeed);
-			SetActorRotation(ClampedRotation);
+			if (TurnInput != 0.0f)
+			{
+				// Spin the snake left or right based on the Arrow Keys
+				FRotator NewRotation = GetActorRotation() + FRotator(0.0f, TurnInput * MaxTurnSpeed * DeltaTime, 0.0f);
+				SetActorRotation(NewRotation);
+			}
 		}
 	}
 
@@ -213,6 +241,9 @@ void ANSGSnakeBase::AddTailSegment()
 	{
 		// Add it to our list so the Tick function starts moving it
 		TailSegments.Add(NewSegment);
+
+		// Refresh tail
+		RefreshTailVisuals();
 	}
 }
 
@@ -226,6 +257,8 @@ void ANSGSnakeBase::SwapHeadAndTail()
 	SwappingSegment = TailSegments.Last(); 
 
 	CurrentSwapTimer = MaxSwapTime;
+
+	bIsPlayer1Driving = !bIsPlayer1Driving;
 }
 
 void ANSGSnakeBase::PerformSwapTeleport()
@@ -263,6 +296,27 @@ void ANSGSnakeBase::RefreshTailVisuals()
 			// It is the last piece ONLY if its index is Size - 1
 			bool bIsLast = (i == TailSegments.Num() - 1);
 			Segment->UpdateVisuals(bIsLast);
+		}
+	}
+}
+
+void ANSGSnakeBase::OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	// If overlapping something that isn't a tail then ignore
+	if (bIsSwapping || InvincibilityTimer > 0.0f || !OtherActor || OtherActor == this) return;
+
+	// Did we hit a snake segment?
+	if (ANSGSnakeSegment* HitSegment = Cast<ANSGSnakeSegment>(OtherActor))
+	{
+		// Find which segment we hit
+		int32 SegmentIndex = TailSegments.Find(HitSegment);
+
+		// Ignore our own neck!
+		if (SegmentIndex > 2)
+		{
+			UE_LOG(LogTemp, Error, TEXT("GAME OVER! You bit your tail!"));
+
+			UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
 		}
 	}
 }

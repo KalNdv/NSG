@@ -8,7 +8,9 @@ ANSGSnakeSegment::ANSGSnakeSegment()
 
 	SegmentMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SegmentMesh"));
 	RootComponent = SegmentMesh;
-	SegmentMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); 
+
+	SegmentMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+	SegmentMesh->SetGenerateOverlapEvents(true);
 }
 
 void ANSGSnakeSegment::UpdateVisuals(bool bIsLastSegment)
