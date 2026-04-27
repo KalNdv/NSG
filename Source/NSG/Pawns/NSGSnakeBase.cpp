@@ -76,19 +76,27 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Invincibility timer, toggles that headmesh overlap check too
+	if (InvincibilityTimer > 0.0f)
+	{
+		InvincibilityTimer -= DeltaTime;
+
+		if (InvincibilityTimer <= 0.0f)
+		{
+			HeadMesh->SetGenerateOverlapEvents(true);
+		}
+	}
+
 	if (bIsSwapping)
 	{
 		CurrentSwapTime += DeltaTime;
-		
-		if (InvincibilityTimer > 0.0f)
-		{
-			InvincibilityTimer -= DeltaTime;
-		}
 
 		if (CurrentSwapTime <= SwapTransitionTime)
 		{
+
 			// Shrink first
-			float Scale = FMath::Lerp(1.0f, 0.0f, CurrentSwapTime / SwapTransitionTime);
+			// Reworked scaling, minimum of 0.01f to preserve collision if this is what is breaking it
+			float Scale = FMath::Lerp(1.0f, 0.01f, CurrentSwapTime / SwapTransitionTime);
 
 			// Scale the head mesh and the tail segment
 			HeadMesh->SetWorldScale3D(FVector(Scale));
@@ -96,6 +104,7 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 		}
 		else if (CurrentSwapTime <= SwapTransitionTime * 2.0f)
 		{
+
 			// Midpoint = teleport
 			if (!bMidSwapTeleportDone)
 			{
@@ -104,7 +113,8 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 			}
 
 			// Return growth
-			float Scale = FMath::Lerp(0.0f, 1.0f, (CurrentSwapTime - SwapTransitionTime) / SwapTransitionTime);
+			// Reworked scaling, minimum of 0.01f to preserve collision if this is what is breaking it
+			float Scale = FMath::Lerp(0.01f, 1.0f, (CurrentSwapTime - SwapTransitionTime) / SwapTransitionTime);
 
 			HeadMesh->SetWorldScale3D(FVector(Scale));
 
@@ -120,7 +130,7 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 			// Give the player 0.5 seconds of invincibility after the swap finishes
 			InvincibilityTimer = 0.5f;
 
-			// Tail visual refresh
+			// Refresh the tail visuals 
 			RefreshTailVisuals();
 		}
 
@@ -254,11 +264,13 @@ void ANSGSnakeBase::SwapHeadAndTail()
 	bIsSwapping = true;
 	bMidSwapTeleportDone = false;
 	CurrentSwapTime = 0.0f;
-	SwappingSegment = TailSegments.Last(); 
+	SwappingSegment = TailSegments.Last();
 
 	CurrentSwapTimer = MaxSwapTime;
 
 	bIsPlayer1Driving = !bIsPlayer1Driving;
+
+	HeadMesh->SetGenerateOverlapEvents(false); // For safety, since for some reason I cannot collide with my own tail
 }
 
 void ANSGSnakeBase::PerformSwapTeleport()
