@@ -42,10 +42,6 @@ protected:
 	float CurrentSwapTimer;
 	float InvincibilityTimer;
 
-	// Snake movement speed
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	float MoveSpeed;
-
 	// Coop toggler
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Rules")
 	bool bIsCoopMode = false;
@@ -53,11 +49,15 @@ protected:
 	// Track who is driving the snake
 	bool bIsPlayer1Driving = true;
 
+public:
+	// Snake movement speed
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float MoveSpeed;
+
 	// Snake max turn speed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float MaxTurnSpeed = 80.0f;
 
-public:
 	// Ticking
 	virtual void Tick(float DeltaTime) override;
 

@@ -6,6 +6,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "NSGSnakeSegment.h"
+#include <NSG/Core/NSGGameMode.h>
 
 ANSGSnakeBase::ANSGSnakeBase()
 {
@@ -141,11 +142,12 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 	// Only count down if we aren't currently in the middle of a swap animation
 	if (!bIsSwapping)
 	{
-		CurrentSwapTimer -= DeltaTime;
-
-		// Convert the float into a rounded-up int then to text
-		int32 SecondsLeft = FMath::CeilToInt(CurrentSwapTimer);
-		TimerText->SetText(FText::FromString(FString::FromInt(SecondsLeft)));
+		// Update 3D Text from the GameMode
+		if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
+		{
+			int32 SecondsLeft = FMath::CeilToInt(GM->GlobalSwapTimer);
+			TimerText->SetText(FText::FromString(FString::FromInt(SecondsLeft)));
+		}
 
 		// If we hit zero, force a swap!
 		if (CurrentSwapTimer <= 0.0f)
@@ -323,12 +325,20 @@ void ANSGSnakeBase::OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* O
 		// Find which segment we hit
 		int32 SegmentIndex = TailSegments.Find(HitSegment);
 
-		// Ignore our own neck!
-		if (SegmentIndex > 2)
+		// Ignore our own neck and die to enemies since we cannot see their index!
+		if (SegmentIndex == INDEX_NONE || SegmentIndex > 2)
 		{
 			UE_LOG(LogTemp, Error, TEXT("GAME OVER! You bit your tail!"));
 
-			UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+			// Handle death
+			if (IsPlayerControlled())
+			{
+				UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+			}
+			else
+			{
+				Destroy(); // AI dudes die and just vanish
+			}
 		}
 	}
 }
