@@ -1,4 +1,5 @@
 #include "NSGSnakeBase.h"
+#include "../Core/NSGGameMode.h"
 #include "Components/StaticMeshComponent.h"
 #include "Algo/Reverse.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -6,7 +7,6 @@
 #include "Components/TextRenderComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "NSGSnakeSegment.h"
-#include <NSG/Core/NSGGameMode.h>
 
 ANSGSnakeBase::ANSGSnakeBase()
 {
@@ -61,7 +61,11 @@ void ANSGSnakeBase::BeginPlay()
 	// Set the starting timer
 	CurrentSwapTimer = MaxSwapTime;
 
-	// Spawn with 2 segments
+	// Give the snake 1 forced second of invulnerability
+	InvincibilityTimer = 1.0f;
+	HeadMesh->SetGenerateOverlapEvents(false);
+
+	// Spawn with 2 segments (this also technically upps difficulty, but... well. I DON'T HAVE TIME)
 	AddTailSegment();
 	AddTailSegment();
 
@@ -85,6 +89,20 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 		if (InvincibilityTimer <= 0.0f)
 		{
 			HeadMesh->SetGenerateOverlapEvents(true);
+		}
+	}
+
+	// Stupid code check for boundary
+	if (IsPlayerControlled() && !bIsSwapping)
+	{
+		if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
+		{
+			// We add a 2000 unit buffer, checking from 0, 0
+			if (GetActorLocation().Size2D() > (GM->SpawnRadius + 2000.0f))
+			{
+				UE_LOG(LogTemp, Error, TEXT("You wandered too far!"));
+				UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+			}
 		}
 	}
 
@@ -237,17 +255,20 @@ void ANSGSnakeBase::AddTailSegment()
 		UE_LOG(LogTemp, Error, TEXT("Snake cannot grow: SegmentClass is not set in Blueprint!"));
 		return;
 	}
-
+	
 	// Figure out where to spawn the new part (behind the last segment or behind the head)
 	FVector SpawnLocation = GetActorLocation();
+	FRotator SpawnRotation = GetActorRotation();
+
 	if (TailSegments.Num() > 0)
 	{
 		SpawnLocation = TailSegments.Last()->GetActorLocation();
+		SpawnRotation = TailSegments.Last()->GetActorRotation();
 	}
 
 	// Spawn it into the world
 	FActorSpawnParameters SpawnParams;
-	AActor* NewSegment = GetWorld()->SpawnActor<AActor>(SegmentClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+	AActor* NewSegment = GetWorld()->SpawnActor<AActor>(SegmentClass, SpawnLocation, SpawnRotation, SpawnParams);
 
 	if (NewSegment)
 	{
@@ -256,6 +277,15 @@ void ANSGSnakeBase::AddTailSegment()
 
 		// Refresh tail
 		RefreshTailVisuals();
+	}
+
+	// Very stupid check, but.. It will do.
+	if (bCanScorePoints)
+	{
+		if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
+		{
+			GM->AddScoreAndScaleDifficulty();
+		}
 	}
 }
 
@@ -328,7 +358,7 @@ void ANSGSnakeBase::OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* O
 		// Ignore our own neck and die to enemies since we cannot see their index!
 		if (SegmentIndex == INDEX_NONE || SegmentIndex > 2)
 		{
-			UE_LOG(LogTemp, Error, TEXT("GAME OVER! You bit your tail!"));
+			UE_LOG(LogTemp, Error, TEXT("A snake died"));
 
 			// Handle death
 			if (IsPlayerControlled())
@@ -337,7 +367,20 @@ void ANSGSnakeBase::OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* O
 			}
 			else
 			{
-				Destroy(); // AI dudes die and just vanish
+				ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this));
+				if (GM && GM->PelletClass && !bLeavesDeadlyTail)
+				{
+					// Spawn pellets and delete the body
+					GetWorld()->SpawnActor<AActor>(GM->PelletClass, GetActorLocation(), FRotator::ZeroRotator);
+					for (AActor* Segment : TailSegments)
+					{
+						GetWorld()->SpawnActor<AActor>(GM->PelletClass, Segment->GetActorLocation(), FRotator::ZeroRotator);
+						Segment->Destroy(); // Destroy the mesh
+					}
+				}
+				// If orange snake, then boom, deadly tail left behind!!
+
+				Destroy(); // Always destroy the AI head
 			}
 		}
 	}

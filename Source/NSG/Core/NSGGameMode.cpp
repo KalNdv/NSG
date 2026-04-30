@@ -3,6 +3,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
 
 ANSGGameMode::ANSGGameMode()
 {
@@ -21,6 +22,9 @@ void ANSGGameMode::BeginPlay()
 
 	// The pellet timer
 	GetWorldTimerManager().SetTimer(PelletTimerHandle, this, &ANSGGameMode::SpawnPellet, PelletSpawnRate, true);
+	
+	// The snake timer
+	GetWorldTimerManager().SetTimer(EnemyTimerHandle, this, &ANSGGameMode::SpawnEnemy, EnemySpawnRate, true);
 }
 
 void ANSGGameMode::SpawnPellet()
@@ -38,20 +42,80 @@ void ANSGGameMode::SpawnPellet()
 
 void ANSGGameMode::SpawnEnemy()
 {
-	if (!EnemySnakeClass) return;
+	// Population capper!
+	TArray<AActor*> AllSnakes;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ANSGSnakeBase::StaticClass(), AllSnakes);
 
-	FVector2D RandomPoint = FMath::RandPointInCircle(SpawnRadius);
-	FVector SpawnLocation(RandomPoint.X, RandomPoint.Y, 50.0f);
+	// Total snake pool
+	int32 CurrentEnemyCount = AllSnakes.Num() - 1;
 
-	// Face enemy randomly on spawn
+	// If we have reached the max allowed enemies, do not spawn
+	if (CurrentEnemyCount >= MaxEnemies)
+	{
+		return;
+	}
+
+	// Safe little spawn zone so no snake eats us alive
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+	FVector PlayerLocation = PlayerPawn ? PlayerPawn->GetActorLocation() : FVector::ZeroVector;
+
+	FVector SpawnLocation;
+	bool bFoundSafeSpot = false;
+
+	// Loop a couple of times to find a good spot away from the player
+	for (int32 i = 0; i < 10; i++)
+	{
+		FVector2D RandomPoint = FMath::RandPointInCircle(SpawnRadius);
+		SpawnLocation = FVector(RandomPoint.X, RandomPoint.Y, 50.0f);
+
+		// IF we are 500 units away, then great
+		if (!PlayerPawn || FVector::Dist2D(SpawnLocation, PlayerLocation) >= 500.0f)
+		{
+			bFoundSafeSpot = true;
+			break; // Found it! Out of loop.
+		}
+	}
+
+	// Give up if no spot is found
+	if (!bFoundSafeSpot) return;
+
+	// Random rotation
 	FRotator RandomRotation(0.0f, FMath::RandRange(0.0f, 360.0f), 0.0f);
 
-	GetWorld()->SpawnActor<ANSGSnakeBase>(EnemySnakeClass, SpawnLocation, RandomRotation);
+	// Spawning probability
+	TSubclassOf<ANSGSnakeBase> ClassToSpawn = EnemySnakeClass;
+
+	if (OrangeSnakeClass)
+	{
+		// Spawn random snakes, then 50/50 when at highest difficulty scaling
+		float OrangeChance = FMath::Clamp((DifficultyMultiplier - 1.0f) * 0.2f, 0.0f, 0.5f);
+
+		if (FMath::FRand() <= OrangeChance)
+		{
+			ClassToSpawn = OrangeSnakeClass;
+		}
+	}
+
+	if (!ClassToSpawn) return;
+
+	ANSGSnakeBase* NewEnemy = GetWorld()->SpawnActor<ANSGSnakeBase>(ClassToSpawn, SpawnLocation, RandomRotation);
+
+	if (NewEnemy)
+	{
+		int32 TargetLength = FMath::RoundToInt(3.0f * DifficultyMultiplier);
+		for (int32 i = 0; i < TargetLength; i++)
+		{
+			NewEnemy->AddTailSegment();
+		}
+	}
 }
 
 void ANSGGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// Arena drawing
+	DrawDebugCircle(GetWorld(), FVector(0.0f, 0.0f, 10.0f), SpawnRadius + 2000.0f, 64, FColor::Red, false, -1.0f, 0, 20.0f, FVector(0, 1, 0), FVector(1, 0, 0), false);
 
 	GlobalSwapTimer -= DeltaTime;
 
@@ -75,7 +139,7 @@ void ANSGGameMode::Tick(float DeltaTime)
 void ANSGGameMode::AddScoreAndScaleDifficulty()
 {
 	GlobalScore += 10;
-	DifficultyMultiplier += 0.05f; // Increase global speed by 5%
+	DifficultyMultiplier += 0.03f; // Increase global speed by 3%
 
 	// Shrink the swap timer, but clamp it so it never drops below 5 seconds
 	CurrentMaxSwapTime = FMath::Clamp(30.0f - (DifficultyMultiplier * 2.0f), 5.0f, 30.0f);
@@ -87,8 +151,8 @@ void ANSGGameMode::AddScoreAndScaleDifficulty()
 	{
 		if (ANSGSnakeBase* Snake = Cast<ANSGSnakeBase>(Actor))
 		{
-			Snake->MoveSpeed = FMath::Clamp(400.0f * DifficultyMultiplier, 400.0f, 2000.0f);
-			Snake->MaxTurnSpeed = FMath::Clamp(80.0f * DifficultyMultiplier, 80.0f, 400.0f);
+			Snake->MoveSpeed = FMath::Clamp(400.0f * DifficultyMultiplier / 2.0f, 400.0f, 2000.0f);
+			Snake->MaxTurnSpeed = FMath::Clamp(80.0f * DifficultyMultiplier / 2.0f, 80.0f, 400.0f);
 		}
 	}
 

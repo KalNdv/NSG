@@ -21,17 +21,28 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Arena Spawning")
 	TSubclassOf<AActor> PelletClass;
 
-	// Enemy snake spawn (BP_HostileSnake here)
+	// Enemy snake spawns
 	UPROPERTY(EditDefaultsOnly, Category = "Arena Spawning")
 	TSubclassOf<class ANSGSnakeBase> EnemySnakeClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Arena Spawning")
+	TSubclassOf<class ANSGSnakeBase> OrangeSnakeClass;
+
 	// Arena width
 	UPROPERTY(EditAnywhere, Category = "Arena Spawning")
-	float SpawnRadius = 3000.0f;
+	float SpawnRadius = 2000.0f;
 
 	// Pellet spawn per second
 	UPROPERTY(EditAnywhere, Category = "Arena Spawning")
 	float PelletSpawnRate = 0.5f;
+
+	// How often a new enemy tries to spawn (in seconds)
+	UPROPERTY(EditAnywhere, Category = "Arena Spawning")
+	float EnemySpawnRate = 5.0f;
+
+	// The maximum amount of enemies allowed alive at the same time
+	UPROPERTY(EditAnywhere, Category = "Arena Spawning")
+	int32 MaxEnemies = 5;
 
 	// How many enemies to spawn at the start
 	UPROPERTY(EditAnywhere, Category = "Arena Spawning")
@@ -56,6 +67,7 @@ private:
 	void SpawnPellet();
 	void SpawnEnemy();
 
-	// Timer to keep spawning pellets forever
+	// Timer to keep spawning stuff forever
 	FTimerHandle PelletTimerHandle;
+	FTimerHandle EnemyTimerHandle;
 };

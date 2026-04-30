@@ -16,6 +16,10 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
+	// Stinky stupid bool
+	UPROPERTY(EditDefaultsOnly, Category = "Game Rules")
+	bool bCanScorePoints = false;
 
 	// Snake head mesh in blueprint
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -45,6 +49,10 @@ protected:
 	// Coop toggler
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Rules")
 	bool bIsCoopMode = false;
+
+	// Does this snake leave its tail behind?
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Rules")
+	bool bLeavesDeadlyTail = false;
 
 	// Track who is driving the snake
 	bool bIsPlayer1Driving = true;
