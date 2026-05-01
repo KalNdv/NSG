@@ -1,9 +1,12 @@
 #include "NSGGameMode.h"
+#include "Blueprint/UserWidget.h"
 #include "../Pawns/NSGSnakeBase.h"
 #include "Math/UnrealMathUtility.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "../Pawns/NSGSnakeBase.h"
+#include "../NSGGameInstance.h"
 
 ANSGGameMode::ANSGGameMode()
 {
@@ -13,6 +16,8 @@ ANSGGameMode::ANSGGameMode()
 void ANSGGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	DifficultyMultiplier = InitialDifficultyMultiplier;
 
 	// Spawn start enemies
 	for (int32 i = 0; i < StartingEnemies; i++)
@@ -115,7 +120,7 @@ void ANSGGameMode::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// Arena drawing
-	DrawDebugCircle(GetWorld(), FVector(0.0f, 0.0f, 10.0f), SpawnRadius + 2000.0f, 64, FColor::Red, false, -1.0f, 0, 20.0f, FVector(0, 1, 0), FVector(1, 0, 0), false);
+	DrawDebugCircle(GetWorld(), FVector(0.0f, 0.0f, 10.0f), SpawnRadius + 200.0f, 64, FColor::Red, false, -1.0f, 0, 20.0f, FVector(0, 1, 0), FVector(1, 0, 0), false);
 
 	GlobalSwapTimer -= DeltaTime;
 
@@ -138,7 +143,12 @@ void ANSGGameMode::Tick(float DeltaTime)
 
 void ANSGGameMode::AddScoreAndScaleDifficulty()
 {
-	GlobalScore += 10;
+	if (UNSGGameInstance* GI = Cast<UNSGGameInstance>(GetGameInstance()))
+	{
+		GI->TotalScore += 10;
+		
+	}
+
 	DifficultyMultiplier += 0.03f; // Increase global speed by 3%
 
 	// Shrink the swap timer, but clamp it so it never drops below 5 seconds
@@ -160,4 +170,118 @@ void ANSGGameMode::AddScoreAndScaleDifficulty()
 	PelletSpawnRate = FMath::Clamp(0.5f / DifficultyMultiplier, 0.1f, 0.5f);
 	GetWorldTimerManager().ClearTimer(PelletTimerHandle);
 	GetWorldTimerManager().SetTimer(PelletTimerHandle, this, &ANSGGameMode::SpawnPellet, PelletSpawnRate, true);
+}
+
+void ANSGGameMode::ShowGameOver()
+{
+	if (GameOverWidgetClass)
+	{
+		ActiveWidget = CreateWidget<UUserWidget>(GetWorld(), GameOverWidgetClass);
+		if (ActiveWidget)
+		{
+			ActiveWidget->AddToViewport();
+			if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+			{
+				PC->SetShowMouseCursor(true);
+				PC->SetPause(true); // Freeze game
+			}
+		}
+	}
+}
+
+void ANSGGameMode::ShowWinScreen()
+{
+	if (WinWidgetClass && !bIsFreeplay)
+	{
+		ActiveWidget = CreateWidget<UUserWidget>(GetWorld(), WinWidgetClass);
+		if (ActiveWidget)
+		{
+			ActiveWidget->AddToViewport();
+			if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+			{
+				PC->SetShowMouseCursor(true);
+				PC->SetPause(true); // Freeze game yet again!
+			}
+		}
+	}
+}
+
+void ANSGGameMode::TogglePause()
+{
+	// Don't pause if dead or won
+	if (ActiveWidget && ActiveWidget->GetClass() != PauseWidgetClass) return;
+
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	if (!PC) return;
+
+	if (UGameplayStatics::IsGamePaused(GetWorld()))
+	{
+		// Unpause
+		if (ActiveWidget)
+		{
+			ActiveWidget->RemoveFromParent();
+			ActiveWidget = nullptr; // Kill pointer
+		}
+		PC->SetPause(false);
+
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+	}
+	else if (PauseWidgetClass)
+	{
+		// Pause
+		ActiveWidget = CreateWidget<UUserWidget>(GetWorld(), PauseWidgetClass);
+		if (ActiveWidget)
+		{
+			ActiveWidget->AddToViewport();
+			PC->SetPause(true);
+
+			FInputModeGameAndUI InputMode;
+			PC->SetInputMode(InputMode);
+			PC->SetShowMouseCursor(true);
+		}
+	}
+}
+
+void ANSGGameMode::StartFreeplay()
+{
+	bIsFreeplay = true;
+
+	if (ActiveWidget)
+	{
+		ActiveWidget->RemoveFromParent();
+		ActiveWidget = nullptr; 
+	}
+
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+	{
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+
+		// Unfreeze the game!
+		PC->SetPause(false);
+
+		if (ANSGSnakeBase* Snake = Cast<ANSGSnakeBase>(PC->GetPawn()))
+		{
+			Snake->InvincibilityTimer = 0.5f;
+
+			FTimerHandle WakeupTimer;
+			GetWorldTimerManager().SetTimer(WakeupTimer, [Snake]()
+				{
+					if (IsValid(Snake) && Snake->HeadMesh)
+					{
+						Snake->HeadMesh->SetGenerateOverlapEvents(false);
+					}
+				}, 0.05f, false);
+		}
+	}
+}
+
+void ANSGGameMode::LoadNextLevel()
+{
+	// Load next level, safety check as I'm a defensive programmer and scared of everything
+	if (!NextLevelName.IsNone())
+	{
+		UGameplayStatics::OpenLevel(this, NextLevelName);
+	}
 }

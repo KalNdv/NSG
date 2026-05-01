@@ -13,6 +13,13 @@ public:
 	// Sets defaults
 	ANSGSnakeBase();
 
+	// Snake head mesh in blueprint
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	class UStaticMeshComponent* HeadMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mechanics")
+	float InvincibilityTimer;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -20,11 +27,6 @@ protected:
 	// Stinky stupid bool
 	UPROPERTY(EditDefaultsOnly, Category = "Game Rules")
 	bool bCanScorePoints = false;
-
-	// Snake head mesh in blueprint
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	class UStaticMeshComponent* HeadMesh;
-
 	// The Spring arm
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class USpringArmComponent* SpringArm;
@@ -44,7 +46,6 @@ protected:
 	// The countdown value (gets set to MaxSwapTime)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mechanics")
 	float CurrentSwapTimer;
-	float InvincibilityTimer;
 
 	// Coop toggler
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game Rules")

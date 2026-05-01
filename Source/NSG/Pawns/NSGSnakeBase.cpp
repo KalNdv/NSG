@@ -7,6 +7,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "NSGSnakeSegment.h"
+#include "../NSGGameInstance.h"
 
 ANSGSnakeBase::ANSGSnakeBase()
 {
@@ -58,6 +59,12 @@ void ANSGSnakeBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// And FINALLY, toggle co-op, probably the last lines I write
+	if (UNSGGameInstance* GI = Cast<UNSGGameInstance>(GetGameInstance()))
+	{
+		bIsCoopMode = GI->bWantsCoop;
+	}
+
 	// Set the starting timer
 	CurrentSwapTimer = MaxSwapTime;
 
@@ -65,7 +72,7 @@ void ANSGSnakeBase::BeginPlay()
 	InvincibilityTimer = 1.0f;
 	HeadMesh->SetGenerateOverlapEvents(false);
 
-	// Spawn with 2 segments (this also technically upps difficulty, but... well. I DON'T HAVE TIME)
+	// Spawn with 2 segments (this also technically upps difficulty, but it's such a small thing so it isn't noticeable)
 	AddTailSegment();
 	AddTailSegment();
 
@@ -97,8 +104,8 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 	{
 		if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
 		{
-			// We add a 2000 unit buffer, checking from 0, 0
-			if (GetActorLocation().Size2D() > (GM->SpawnRadius + 2000.0f))
+			// We add spawn radius, and now just a +200 unit buffer, checking from 0, 0, to make arenas more intense
+			if (GetActorLocation().Size2D() > (GM->SpawnRadius + 200.0f))
 			{
 				UE_LOG(LogTemp, Error, TEXT("You wandered too far!"));
 				UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
@@ -119,7 +126,7 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 
 			// Scale the head mesh and the tail segment
 			HeadMesh->SetWorldScale3D(FVector(Scale));
-			if (SwappingSegment) SwappingSegment->SetActorScale3D(FVector(Scale));
+			if (IsValid(SwappingSegment)) SwappingSegment->SetActorScale3D(FVector(Scale));
 		}
 		else if (CurrentSwapTime <= SwapTransitionTime * 2.0f)
 		{
@@ -138,7 +145,7 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 			HeadMesh->SetWorldScale3D(FVector(Scale));
 
 			// Because PerformSwapTeleport() reversed the array, our SwappingSegment is now at Index 0!
-			if (TailSegments.Num() > 0) TailSegments[0]->SetActorScale3D(FVector(Scale));
+			if (TailSegments.Num() > 0 && IsValid(TailSegments[0])) TailSegments[0]->SetActorScale3D(FVector(Scale));
 		}
 		else
 		{
@@ -177,6 +184,15 @@ void ANSGSnakeBase::Tick(float DeltaTime)
 	// Funny controller link
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
+		// Stupid if escape pressed check
+		if (PC->WasInputKeyJustPressed(EKeys::Escape))
+		{
+			if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
+			{
+				GM->TogglePause();
+			}
+		}
+
 		// Singleplayer or Co-op? If single player or player 1 in co-op:
 		if (!bIsCoopMode || bIsPlayer1Driving)
 		{
@@ -282,9 +298,21 @@ void ANSGSnakeBase::AddTailSegment()
 	// Very stupid check, but.. It will do.
 	if (bCanScorePoints)
 	{
+		// Also,
 		if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
 		{
 			GM->AddScoreAndScaleDifficulty();
+
+			//  if 100 segments, then..
+			if (TailSegments.Num() >= 100 && !GM->bIsFreeplay)
+			{
+				// WE WIN!!!
+				FTimerHandle WinTimer;
+				GetWorld()->GetTimerManager().SetTimer(WinTimer, [GM]()
+					{
+						if (IsValid(GM)) GM->ShowWinScreen();
+					}, 0.05f, false);
+			}
 		}
 	}
 }
@@ -363,19 +391,36 @@ void ANSGSnakeBase::OnHeadOverlap(UPrimitiveComponent* OverlappedComp, AActor* O
 			// Handle death
 			if (IsPlayerControlled())
 			{
-				UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+				// Death handled properly finally
+				if (ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this)))
+				{
+					// Extra safety stuff, since Unreal is kinda.. Unreliable.
+					FTimerHandle DeathTimer;
+					GetWorld()->GetTimerManager().SetTimer(DeathTimer, [GM]()
+						{
+							if (IsValid(GM)) GM->ShowGameOver();
+						}, 0.05f, false);
+
+				}
+
 			}
 			else
 			{
 				ANSGGameMode* GM = Cast<ANSGGameMode>(UGameplayStatics::GetGameMode(this));
 				if (GM && GM->PelletClass && !bLeavesDeadlyTail)
 				{
+					// Hastily disable mesh just as we do this.. So snakes don't eat their own head. Oroborus in my game? I think not
+					HeadMesh->SetGenerateOverlapEvents(false);
+
 					// Spawn pellets and delete the body
 					GetWorld()->SpawnActor<AActor>(GM->PelletClass, GetActorLocation(), FRotator::ZeroRotator);
 					for (AActor* Segment : TailSegments)
 					{
-						GetWorld()->SpawnActor<AActor>(GM->PelletClass, Segment->GetActorLocation(), FRotator::ZeroRotator);
-						Segment->Destroy(); // Destroy the mesh
+						if (IsValid(Segment))
+						{
+							GetWorld()->SpawnActor<AActor>(GM->PelletClass, Segment->GetActorLocation(), FRotator::ZeroRotator);
+							Segment->Destroy(); // Destroy the mesh
+						}
 					}
 				}
 				// If orange snake, then boom, deadly tail left behind!!
